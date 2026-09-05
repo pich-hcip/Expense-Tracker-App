@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../models/balance_summary_model.dart';
-import '../../models/transaction_model.dart';
-import '../../services/dashboard_service.dart';
-// import 'category.dart';
+import '../models/balance_summary_model.dart';
+import '../models/transaction_model.dart';
+import '../services/dashboard_service.dart';
+
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -13,7 +13,6 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  int _selectedIndex = 0;
   final DashboardService _dashboardService = DashboardService();
 
   bool _isLoading = true;
@@ -54,73 +53,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                      ? _buildErrorView()
-                      : RefreshIndicator(
-                          onRefresh: _loadDashboard,
-                          child: ListView(
-                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-                            children: [
-                              _buildHeader(),
-                              const SizedBox(height: 28),
-                              _BalanceCard(summary: _summary!),
-                              const SizedBox(height: 22),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'Recent Transactions',
-                                    style: TextStyle(
-                                      color: Color(0xFF211F20),
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () {},
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: const Color(0xFF0061B7),
-                                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                                    ),
-                                    child: const Text(
-                                      'See All',
-                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 5),
-                              if (_transactions.isEmpty)
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 24),
-                                  child: Center(
-                                    child: Text(
-                                      'No transactions yet',
-                                      style: TextStyle(color: Colors.black45),
-                                    ),
-                                  ),
-                                )
-                              else
-                                for (final transaction in _transactions)
-                                  _TransactionTile(transaction: transaction),
-                            ],
-                          ),
-                        ),
-            ),
-            _BottomNavigation(
-              selectedIndex: _selectedIndex,
-              onSelected: (index) => setState(() => _selectedIndex = index),
-            ),
-          ],
-        ),
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return _buildErrorView();
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadDashboard,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+        children: [
+          _buildHeader(),
+          const SizedBox(height: 28),
+          _BalanceCard(summary: _summary!),
+          const SizedBox(height: 22),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Recent Transactions',
+                style: TextStyle(color: Color(0xFF211F20), fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              TextButton(
+                onPressed: () {},
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF0061B7),
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                ),
+                child: const Text('See All', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          if (_transactions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: Text('No transactions yet', style: TextStyle(color: Colors.black45))),
+            )
+          else
+            for (final transaction in _transactions) _TransactionTile(transaction: transaction),
+        ],
       ),
     );
   }
@@ -149,18 +124,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Good Morning,',
-                style: TextStyle(color: Color(0xFF888888), fontSize: 12),
-              ),
+              Text('Good Morning,', style: TextStyle(color: Color(0xFF888888), fontSize: 12)),
               SizedBox(height: 2),
               Text(
                 'Welcome back',
-                style: TextStyle(
-                  color: Color(0xFF201E1F),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(color: Color(0xFF201E1F), fontSize: 16, fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -176,9 +144,7 @@ class _BalanceCard extends StatelessWidget {
 
   final BalanceSummary summary;
 
-  String _formatCurrency(double value) {
-    return NumberFormat.currency(symbol: '\$').format(value);
-  }
+  String _formatCurrency(double value) => NumberFormat.currency(symbol: '\$').format(value);
 
   @override
   Widget build(BuildContext context) {
@@ -187,9 +153,7 @@ class _BalanceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF0061B7),
         borderRadius: BorderRadius.circular(22),
-        boxShadow: const [
-          BoxShadow(color: Color(0x330061B7), blurRadius: 9, offset: Offset(0, 5)),
-        ],
+        boxShadow: const [BoxShadow(color: Color(0x330061B7), blurRadius: 9, offset: Offset(0, 5))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -232,12 +196,7 @@ class _BalanceCard extends StatelessWidget {
 }
 
 class _BalanceSummary extends StatelessWidget {
-  const _BalanceSummary({
-    required this.label,
-    required this.amount,
-    required this.icon,
-    required this.iconColor,
-  });
+  const _BalanceSummary({required this.label, required this.amount, required this.icon, required this.iconColor});
 
   final String label;
   final String amount;
@@ -259,10 +218,7 @@ class _BalanceSummary extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label, style: const TextStyle(color: Color(0xFF9FCBF0), fontSize: 11)),
-            Text(
-              amount,
-              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
-            ),
+            Text(amount, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
           ],
         ),
       ],
@@ -274,10 +230,6 @@ class _TransactionTile extends StatelessWidget {
   const _TransactionTile({required this.transaction});
 
   final TransactionItem transaction;
-
-  static const _iconMap = {
-    'Salary': (Icons.business_center_outlined, Color(0xFF0061B7), Color(0xFFE4F4FC)),
-  };
 
   @override
   Widget build(BuildContext context) {
@@ -367,82 +319,6 @@ class _SquareButton extends StatelessWidget {
                 ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomNavigation extends StatelessWidget {
-  const _BottomNavigation({required this.selectedIndex, required this.onSelected});
-
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    const items = [
-      (Icons.home_outlined, 'Home'),
-      (Icons.list_alt_outlined, 'Transactions'),
-      (Icons.account_balance_wallet_outlined, 'Wallet'),
-      (Icons.person_outline, 'Profile'),
-    ];
-
-    return Container(
-      height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFEEEEEE))),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _NavItem(icon: items[0].$1, label: items[0].$2, selected: selectedIndex == 0, onTap: () => onSelected(0)),
-          _NavItem(icon: items[1].$1, label: items[1].$2, selected: selectedIndex == 1, onTap: () => onSelected(1)),
-          Material(
-            color: const Color(0xFF0061B7),
-            shape: const CircleBorder(),
-            child: InkWell(
-              onTap: () {
-                // Navigator.of(context).push(
-                //   MaterialPageRoute<void>(builder: (_) => const CategoryScreen()),
-                // );
-              },
-              customBorder: const CircleBorder(),
-              child: const SizedBox(width: 52, height: 52, child: Icon(Icons.add, color: Colors.white, size: 31)),
-            ),
-          ),
-          _NavItem(icon: items[2].$1, label: items[2].$2, selected: selectedIndex == 2, onTap: () => onSelected(2)),
-          _NavItem(icon: items[3].$1, label: items[3].$2, selected: selectedIndex == 3, onTap: () => onSelected(3)),
-        ],
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  const _NavItem({required this.icon, required this.label, required this.selected, required this.onTap});
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? const Color(0xFF0061B7) : const Color(0xFF969696);
-    return InkWell(
-      onTap: onTap,
-      child: SizedBox(
-        width: 54,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 2),
-            Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
-          ],
         ),
       ),
     );

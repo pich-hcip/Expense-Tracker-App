@@ -3,8 +3,9 @@ import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import 'register_screen.dart';
-import '../auth/dashboard_screen.dart';
+import '../dashboard_screen.dart';
 import 'reset_password_screen.dart';
+import '../main_navigation_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -31,7 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (success) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => const DashboardScreen()),
+        MaterialPageRoute<void>(builder: (_) => const MainNavigationScreen()),
         (route) => false,
       );
 
@@ -41,7 +42,6 @@ class _LoginScreenState extends State<LoginScreen> {
           backgroundColor: Colors.green,
         ),
       );
-
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
