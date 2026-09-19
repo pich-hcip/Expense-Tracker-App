@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../screens/dashboard_screen.dart';
 import '../../screens/transactions_screen.dart';
 import '../../screens/wallet_screen.dart';
-import '../../screens/profile_screen.dart';
+import '../../screens/report_screen.dart';
 import '../../screens/category_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -15,16 +15,33 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
 
-  // Index 4 (CategoryScreen) has no bottom-nav icon of its own —
-  // it's only reached via the center "+" button, but stays inside
-  // the same IndexedStack so the footer keeps showing.
-  final List<Widget> _pages = const [
-    DashboardScreen(),
-    TransactionsScreen(),
-    WalletScreen(),
-    ProfileScreen(),
-    CategoryScreen(),
+  final GlobalKey<TransactionsScreenState> _transactionsKey = GlobalKey<TransactionsScreenState>();
+  final GlobalKey<WalletScreenState> _walletKey = GlobalKey<WalletScreenState>();
+  final GlobalKey<CategoryScreenState> _categoryKey = GlobalKey<CategoryScreenState>();
+
+  late final List<Widget> _pages = [
+    const DashboardScreen(),
+    TransactionsScreen(key: _transactionsKey),
+    WalletScreen(key: _walletKey),
+    const ReportScreen(),
+    CategoryScreen(key: _categoryKey),
   ];
+
+  void _onNavSelected(int index) {
+    setState(() => _selectedIndex = index);
+
+    switch (index) {
+      case 1:
+        _transactionsKey.currentState?.refresh();
+        break;
+      case 2:
+        _walletKey.currentState?.refresh();
+        break;
+      case 4:
+        _categoryKey.currentState?.refresh();
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +55,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
       bottomNavigationBar: _BottomNavigation(
         selectedIndex: _selectedIndex,
-        onSelected: (index) => setState(() => _selectedIndex = index),
+        onSelected: _onNavSelected,
       ),
     );
   }
@@ -56,7 +73,7 @@ class _BottomNavigation extends StatelessWidget {
       (Icons.home_outlined, 'Home'),
       (Icons.list_alt_outlined, 'Transaction'),
       (Icons.account_balance_wallet_outlined, 'Wallet'),
-      (Icons.person_outline, 'Profile'),
+      (Icons.receipt_long_outlined, 'Report'),
     ];
 
     final isCategorySelected = selectedIndex == 4;
@@ -83,8 +100,6 @@ class _BottomNavigation extends StatelessWidget {
             selected: selectedIndex == 1,
             onTap: () => onSelected(1),
           ),
-          // Center button — switches to the Category page (index 4)
-          // instead of pushing a new screen, so the footer stays visible.
           Material(
             color: isCategorySelected ? const Color(0xFF17427A) : const Color(0xFF0061B7),
             shape: const CircleBorder(),

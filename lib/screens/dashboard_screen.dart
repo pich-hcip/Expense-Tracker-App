@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/balance_summary_model.dart';
 import '../models/transaction_model.dart';
+import '../models/user_profile_model.dart';
 import '../services/dashboard_service.dart';
-
+import '../services/user_service.dart';
+import 'profile_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({super.key, this.onSelectTab});
+
+  final ValueChanged<int>? onSelectTab;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -14,10 +18,12 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final DashboardService _dashboardService = DashboardService();
+  final UserService _userService = UserService();
 
   bool _isLoading = true;
   String? _error;
   BalanceSummary? _summary;
+  UserProfile? _userProfile;
   List<TransactionItem> _transactions = [];
 
   @override
@@ -36,11 +42,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final results = await Future.wait([
         _dashboardService.getSummary(),
         _dashboardService.getRecentTransactions(),
+        _userService.getProfile(), // Matches your UserService method in ProfileScreen
       ]);
 
       setState(() {
         _summary = results[0] as BalanceSummary;
         _transactions = results[1] as List<TransactionItem>;
+        _userProfile = results[2] as UserProfile;
         _isLoading = false;
       });
     } catch (e) {
@@ -49,6 +57,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _navigateToTransactions() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      const Text(
+                        'Transactions',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 48),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: scrollController,
+                      itemCount: _transactions.length,
+                      itemBuilder: (context, index) {
+                        return _TransactionTile(
+                          transaction: _transactions[index],
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -61,10 +127,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return _buildErrorView();
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadDashboard,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      child: Column(
         children: [
           _buildHeader(),
           const SizedBox(height: 28),
@@ -75,26 +140,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               const Text(
                 'Recent Transactions',
-                style: TextStyle(color: Color(0xFF211F20), fontSize: 18, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  color: Color(0xFF211F20),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               TextButton(
-                onPressed: () {},
+                onPressed: _navigateToTransactions,
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFF0061B7),
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                 ),
-                child: const Text('See All', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                child: const Text(
+                  'See All',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 5),
-          if (_transactions.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: Text('No transactions yet', style: TextStyle(color: Colors.black45))),
-            )
-          else
-            for (final transaction in _transactions) _TransactionTile(transaction: transaction),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadDashboard,
+              child: _transactions.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text(
+                              'No transactions yet',
+                              style: TextStyle(color: Colors.black45),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      itemCount: _transactions.length,
+                      padding: const EdgeInsets.only(bottom: 12),
+                      itemBuilder: (context, index) {
+                        return _TransactionTile(
+                          transaction: _transactions[index],
+                        );
+                      },
+                    ),
+            ),
+          ),
         ],
       ),
     );
@@ -116,24 +210,90 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildHeader() {
+    final String displayName = _userProfile?.fullName.isNotEmpty == true
+        ? _userProfile!.fullName
+        : 'User';
+    final String? profileImageUrl = _userProfile?.avatarUrl;
+
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _SquareButton(icon: Icons.menu, onTap: () {}),
-        const SizedBox(width: 13),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        GestureDetector(
+          onTap: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+            );
+            // Refresh header name and avatar when returning from Profile screen
+            _loadDashboard();
+          },
+          child: Row(
             children: [
-              Text('Good Morning,', style: TextStyle(color: Color(0xFF888888), fontSize: 12)),
-              SizedBox(height: 2),
-              Text(
-                'Welcome back',
-                style: TextStyle(color: Color(0xFF201E1F), fontSize: 16, fontWeight: FontWeight.w700),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  color: const Color(0xFFF4F7FD),
+                  child: profileImageUrl != null && profileImageUrl.isNotEmpty
+                      ? Image.network(
+                          profileImageUrl,
+                          width: 48,
+                          height: 48,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return const Center(
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(
+                              Icons.person,
+                              color: ProfileScreen.primaryBlue,
+                              size: 28,
+                            );
+                          },
+                        )
+                      : const Icon(
+                          Icons.person,
+                          color: ProfileScreen.primaryBlue,
+                          size: 28,
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Good Morning,',
+                    style: TextStyle(fontSize: 14, color: Color(0xFF888888)),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    displayName,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF201E1F),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
-        _SquareButton(icon: Icons.notifications_none, showBadge: true, onTap: () {}),
+        _SquareButton(
+          icon: Icons.notifications_none,
+          showBadge: true,
+          onTap: () {},
+        ),
       ],
     );
   }
@@ -144,7 +304,8 @@ class _BalanceCard extends StatelessWidget {
 
   final BalanceSummary summary;
 
-  String _formatCurrency(double value) => NumberFormat.currency(symbol: '\$').format(value);
+  String _formatCurrency(double value) =>
+      NumberFormat.currency(symbol: '\$').format(value);
 
   @override
   Widget build(BuildContext context) {
@@ -153,16 +314,30 @@ class _BalanceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF0061B7),
         borderRadius: BorderRadius.circular(22),
-        boxShadow: const [BoxShadow(color: Color(0x330061B7), blurRadius: 9, offset: Offset(0, 5))],
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x330061B7),
+            blurRadius: 9,
+            offset: Offset(0, 5),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Total Balance', style: TextStyle(color: Color(0xFF8FC5F3), fontSize: 13)),
+          const Text(
+            'Total Balance',
+            style: TextStyle(color: Color(0xFF8FC5F3), fontSize: 13),
+          ),
           const SizedBox(height: 3),
           Text(
             _formatCurrency(summary.totalBalance),
-            style: const TextStyle(color: Colors.white, fontSize: 31, height: 1.2, fontWeight: FontWeight.w700),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 31,
+              height: 1.2,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 18),
           const Divider(color: Color(0x337FC0F5), height: 1),
@@ -196,7 +371,12 @@ class _BalanceCard extends StatelessWidget {
 }
 
 class _BalanceSummary extends StatelessWidget {
-  const _BalanceSummary({required this.label, required this.amount, required this.icon, required this.iconColor});
+  const _BalanceSummary({
+    required this.label,
+    required this.amount,
+    required this.icon,
+    required this.iconColor,
+  });
 
   final String label;
   final String amount;
@@ -210,15 +390,28 @@ class _BalanceSummary extends StatelessWidget {
         Container(
           width: 31,
           height: 31,
-          decoration: const BoxDecoration(color: Color(0xFF1674C5), shape: BoxShape.circle),
+          decoration: const BoxDecoration(
+            color: Color(0xFF1674C5),
+            shape: BoxShape.circle,
+          ),
           child: Icon(icon, color: iconColor, size: 17),
         ),
         const SizedBox(width: 10),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(color: Color(0xFF9FCBF0), fontSize: 11)),
-            Text(amount, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+            Text(
+              label,
+              style: const TextStyle(color: Color(0xFF9FCBF0), fontSize: 11),
+            ),
+            Text(
+              amount,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
       ],
@@ -233,9 +426,13 @@ class _TransactionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final formattedAmount = NumberFormat.currency(symbol: '\$').format(transaction.amount.abs());
+    final formattedAmount = NumberFormat.currency(
+      symbol: '\$',
+    ).format(transaction.amount.abs());
     final sign = transaction.isIncome ? '+' : '-';
-    final displayDate = DateFormat('MMM d, yyyy').format(DateTime.parse(transaction.transactionDate));
+    final displayDate = DateFormat(
+      'MMM d, yyyy',
+    ).format(DateTime.parse(transaction.transactionDate));
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
@@ -245,7 +442,9 @@ class _TransactionTile extends StatelessWidget {
             width: 43,
             height: 43,
             decoration: BoxDecoration(
-              color: transaction.isIncome ? const Color(0xFFE4F4FC) : const Color(0xFFFFE5E8),
+              color: transaction.isIncome
+                  ? const Color(0xFFE4F4FC)
+                  : const Color(0xFFFFE5E8),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -263,10 +462,20 @@ class _TransactionTile extends StatelessWidget {
                   transaction.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Color(0xFF333031), fontSize: 14, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: Color(0xFF333031),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 3),
-                Text(displayDate, style: const TextStyle(color: Color(0xFF999999), fontSize: 11)),
+                Text(
+                  displayDate,
+                  style: const TextStyle(
+                    color: Color(0xFF999999),
+                    fontSize: 11,
+                  ),
+                ),
               ],
             ),
           ),
@@ -274,7 +483,9 @@ class _TransactionTile extends StatelessWidget {
           Text(
             '$sign$formattedAmount',
             style: TextStyle(
-              color: transaction.isIncome ? const Color(0xFF0CBF91) : const Color(0xFFFF4352),
+              color: transaction.isIncome
+                  ? const Color(0xFF0CBF91)
+                  : const Color(0xFFFF4352),
               fontSize: 14,
               fontWeight: FontWeight.w700,
             ),
@@ -286,7 +497,11 @@ class _TransactionTile extends StatelessWidget {
 }
 
 class _SquareButton extends StatelessWidget {
-  const _SquareButton({required this.icon, required this.onTap, this.showBadge = false});
+  const _SquareButton({
+    required this.icon,
+    required this.onTap,
+    this.showBadge = false,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
@@ -314,7 +529,10 @@ class _SquareButton extends StatelessWidget {
                   child: Container(
                     width: 7,
                     height: 7,
-                    decoration: const BoxDecoration(color: Color(0xFFFF4352), shape: BoxShape.circle),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFF4352),
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
             ],

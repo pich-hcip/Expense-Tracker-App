@@ -36,12 +36,12 @@ class _LoginScreenState extends State<LoginScreen> {
         (route) => false,
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.errorMessage ?? 'Login Successful'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   SnackBar(
+      //     content: Text(authProvider.errorMessage ?? 'Login Successful'),
+      //     backgroundColor: Colors.green,
+      //   ),
+      // );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

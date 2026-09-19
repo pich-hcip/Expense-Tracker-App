@@ -53,24 +53,27 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-
-
-Future<bool> resetPassword(String email, String newPassword) async {
-  isLoading = true;
-  errorMessage = null;
-  notifyListeners();
-
-  try {
-    await _authService.resetPassword(email, newPassword);
-    isLoading = false;
+  Future<bool> resetPassword(String email, String newPassword) async {
+    isLoading = true;
+    errorMessage = null;
     notifyListeners();
-    return true;
-  } catch (e) {
-    errorMessage = e.toString();
-    isLoading = false;
-    notifyListeners();
-    return false;
+
+    try {
+      await _authService.resetPassword(email, newPassword);
+      isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      errorMessage = e.toString();
+      isLoading = false;
+      notifyListeners();
+      return false;
+    }
   }
-}
 
+  Future<void> logout() async {
+    await _authService.logout();
+    fullName = null;
+    notifyListeners();
+  }
 }

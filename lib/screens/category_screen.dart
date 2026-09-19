@@ -3,7 +3,6 @@ import '../core/category_visuals.dart';
 import '../models/category_model.dart';
 import '../services/category_service.dart';
 import 'add_category_screen.dart';
-import '../screens/main_navigation_screen.dart';
 import 'add_transaction_screen.dart';
 
 class CategoryScreen extends StatefulWidget {
@@ -15,10 +14,10 @@ class CategoryScreen extends StatefulWidget {
   final ValueChanged<String>? onCategorySelected;
 
   @override
-  State<CategoryScreen> createState() => _CategoryScreenState();
+  CategoryScreenState createState() => CategoryScreenState();
 }
 
-class _CategoryScreenState extends State<CategoryScreen> {
+class CategoryScreenState extends State<CategoryScreen> {
   final CategoryService _categoryService = CategoryService();
 
   bool _showExpenses = true;
@@ -53,6 +52,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
     }
   }
 
+  /// Public so MainNavigationScreen can force a reload when this tab
+  /// is re-selected (IndexedStack keeps it alive otherwise, so category
+  /// transaction counts wouldn't refresh after actions elsewhere).
+  Future<void> refresh() => _loadCategories();
+
   void _onToggleChanged(bool showExpenses) {
     setState(() => _showExpenses = showExpenses);
     _loadCategories();
@@ -82,17 +86,6 @@ class _CategoryScreenState extends State<CategoryScreen> {
     }
   }
 
-  void _goBack() {
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-      return;
-    }
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const MainNavigationScreen()),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -101,12 +94,8 @@ class _CategoryScreenState extends State<CategoryScreen> {
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          tooltip: 'Back',
-          onPressed: _goBack,
-          icon: const Icon(Icons.arrow_back, size: 28),
-        ),
-        titleSpacing: 4,
+        automaticallyImplyLeading: false,
+        titleSpacing: 20,
         title: const Text(
           'Categories',
           style: TextStyle(color: Color(0xFF171717), fontSize: 20, fontWeight: FontWeight.w700),
@@ -144,32 +133,35 @@ class _CategoryScreenState extends State<CategoryScreen> {
                           ],
                         ),
                       )
-                    : ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                        children: [
-                          if (_categories.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 40),
-                              child: Center(child: Text('No categories yet', style: TextStyle(color: Colors.black45))),
-                            )
-                          else
-                            Container(
-                              padding: const EdgeInsets.symmetric(vertical: 7),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: const Color(0xFFD8D8D8)),
-                                borderRadius: BorderRadius.circular(9),
+                    : RefreshIndicator(
+                        onRefresh: _loadCategories,
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                          children: [
+                            if (_categories.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 40),
+                                child: Center(child: Text('No categories yet', style: TextStyle(color: Colors.black45))),
+                              )
+                            else
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 7),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: const Color(0xFFD8D8D8)),
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Column(
+                                  children: [
+                                    for (final category in _categories)
+                                      _CategoryTile(
+                                        category: category,
+                                        onTap: () => _openAddTransaction(category),
+                                      ),
+                                  ],
+                                ),
                               ),
-                              child: Column(
-                                children: [
-                                  for (final category in _categories)
-                                    _CategoryTile(
-                                      category: category,
-                                      onTap: () => _openAddTransaction(category),
-                                    ),
-                                ],
-                              ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
           ),
         ],
