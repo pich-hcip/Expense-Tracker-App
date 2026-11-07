@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:expense_tracker_app/core/l10n.dart';
 import 'package:intl/intl.dart';
+
+import '../core/category_visuals.dart';
+
 import '../models/balance_summary_model.dart';
 import '../models/transaction_model.dart';
 import '../models/user_profile_model.dart';
+
 import '../services/dashboard_service.dart';
 import '../services/user_service.dart';
+import '../services/notification_service.dart';
+
 import 'profile_screen.dart';
+import 'transaction_detail_screen.dart';
+import 'transactions_screen.dart';
+import 'notification_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key, this.onSelectTab});
@@ -13,57 +23,172 @@ class DashboardScreen extends StatefulWidget {
   final ValueChanged<int>? onSelectTab;
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() => DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+// ============================================================
+// DASHBOARD STATE
+// ============================================================
+
+class DashboardScreenState extends State<DashboardScreen> {
   final DashboardService _dashboardService = DashboardService();
   final UserService _userService = UserService();
 
+  final NotificationService _notificationService = NotificationService();
+
   bool _isLoading = true;
+  bool _isRefreshing = false;
+
   String? _error;
+
   BalanceSummary? _summary;
   UserProfile? _userProfile;
+
   List<TransactionItem> _transactions = [];
+
+  // Notification unread count
+  int _unreadNotifications = 0;
+
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
     super.initState();
+
     _loadDashboard();
   }
 
-  Future<void> _loadDashboard() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  // ============================================================
+  // PUBLIC REFRESH
+  // ============================================================
+
+  /// Called by MainNavigationScreen whenever user
+  /// returns to Dashboard.
+  Future<void> refreshDashboard() async {
+    await _loadDashboard(showLoading: false);
+  }
+
+  // ============================================================
+  // LOAD DASHBOARD
+  // ============================================================
+
+  Future<void> _loadDashboard({bool showLoading = true}) async {
+    if (!mounted || _isRefreshing) return;
+
+    _isRefreshing = true;
+
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       final results = await Future.wait([
         _dashboardService.getSummary(),
         _dashboardService.getRecentTransactions(),
-        _userService.getProfile(), // Matches your UserService method in ProfileScreen
+        _userService.getProfile(),
       ]);
+
+      if (!mounted) return;
 
       setState(() {
         _summary = results[0] as BalanceSummary;
+
         _transactions = results[1] as List<TransactionItem>;
+
         _userProfile = results[2] as UserProfile;
+
+        _error = null;
         _isLoading = false;
       });
+
+      // Notification failure should not break Dashboard.
+      await _loadUnreadNotifications();
     } catch (e) {
-      setState(() {
-        _error = 'Could not load dashboard. Pull down to retry.';
-        _isLoading = false;
-      });
+      if (!mounted) return;
+
+      if (_summary == null) {
+        setState(() {
+          _error = 'dashboard_load_error';
+
+          _isLoading = false;
+        });
+      }
+    } finally {
+      _isRefreshing = false;
     }
   }
 
+  // ============================================================
+  // LOAD UNREAD NOTIFICATION COUNT
+  // ============================================================
+
+  Future<void> _loadUnreadNotifications() async {
+    try {
+      final count = await _notificationService.getUnreadCount();
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadNotifications = count;
+      });
+    } catch (_) {
+      // Do not break Dashboard when notification API fails.
+    }
+  }
+
+  // ============================================================
+  // OPEN NOTIFICATIONS
+  // ============================================================
+
+  Future<void> _openNotifications() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const NotificationScreen()));
+
+    if (!mounted) return;
+
+    // User may have opened/read notifications.
+    await _loadUnreadNotifications();
+  }
+
+  // ============================================================
+  // OPEN TRANSACTION DETAIL
+  // ============================================================
+
+  Future<void> _openDetail(TransactionItem item) async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) =>
+            TransactionDetailScreen.fromTransaction(transaction: item),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (deleted == true) {
+      await refreshDashboard();
+    }
+  }
+
+  // ============================================================
+  // NAVIGATE TO TRANSACTIONS
+  // ============================================================
+
   void _navigateToTransactions() {
+    if (widget.onSelectTab != null) {
+      widget.onSelectTab!(1);
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -74,48 +199,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
           maxChildSize: 0.95,
           expand: false,
           builder: (context, scrollController) {
-            return Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                      const Text(
-                        'Transactions',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 48),
-                    ],
+            return Column(
+              children: [
+                const SizedBox(height: 12),
+
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[400],
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: scrollController,
-                      itemCount: _transactions.length,
-                      itemBuilder: (context, index) {
-                        return _TransactionTile(
-                          transaction: _transactions[index],
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
+                ),
+
+                const Expanded(child: TransactionsScreen()),
+              ],
             );
           },
         );
       },
-    );
+    ).then((_) {
+      if (mounted) {
+        refreshDashboard();
+      }
+    });
   }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +235,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_error != null) {
+    if (_error != null || _summary == null) {
       return _buildErrorView();
     }
 
@@ -131,59 +243,79 @@ class _DashboardScreenState extends State<DashboardScreen> {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: Column(
         children: [
+          // Header
           _buildHeader(),
+
           const SizedBox(height: 28),
+
+          // Balance
           _BalanceCard(summary: _summary!),
+
           const SizedBox(height: 22),
+
+          // ====================================================
+          // RECENT TRANSACTIONS TITLE
+          // ====================================================
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Recent Transactions',
+              Text(
+                context.tr('recent_transactions'),
                 style: TextStyle(
-                  color: Color(0xFF211F20),
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
+
               TextButton(
                 onPressed: _navigateToTransactions,
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFF0061B7),
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                 ),
-                child: const Text(
-                  'See All',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                child: Text(
+                  context.tr('see_all'),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
           ),
+
           const SizedBox(height: 5),
+
+          // ====================================================
+          // TRANSACTION LIST
+          // ====================================================
           Expanded(
             child: RefreshIndicator(
-              onRefresh: _loadDashboard,
+              onRefresh: refreshDashboard,
+
               child: _transactions.isEmpty
                   ? ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      children: const [
+                      children: [
                         Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
+                          padding: const EdgeInsets.symmetric(vertical: 24),
                           child: Center(
                             child: Text(
-                              'No transactions yet',
-                              style: TextStyle(color: Colors.black45),
+                              context.tr('no_transactions'),
+                              style: const TextStyle(color: Colors.black45),
                             ),
                           ),
                         ),
                       ],
                     )
                   : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: _transactions.length,
                       padding: const EdgeInsets.only(bottom: 12),
                       itemBuilder: (context, index) {
+                        final item = _transactions[index];
+
                         return _TransactionTile(
-                          transaction: _transactions[index],
+                          transaction: item,
+                          onTap: () => _openDetail(item),
                         );
                       },
                     ),
@@ -194,118 +326,159 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // ============================================================
+  // ERROR VIEW
+  // ============================================================
+
   Widget _buildErrorView() {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+
           const SizedBox(height: 12),
-          Text(_error ?? 'Something went wrong'),
+
+          Text(context.tr(_error ?? 'error_generic')),
+
           const SizedBox(height: 12),
-          ElevatedButton(onPressed: _loadDashboard, child: const Text('Retry')),
+
+          ElevatedButton(
+            onPressed: () => _loadDashboard(),
+            child: Text(context.tr('retry')),
+          ),
         ],
       ),
     );
   }
 
+  // ============================================================
+  // HEADER
+  // ============================================================
+
   Widget _buildHeader() {
     final String displayName = _userProfile?.fullName.isNotEmpty == true
         ? _userProfile!.fullName
-        : 'User';
+        : context.tr('user');
+
     final String? profileImageUrl = _userProfile?.avatarUrl;
 
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        GestureDetector(
-          onTap: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ProfileScreen()),
-            );
-            // Refresh header name and avatar when returning from Profile screen
-            _loadDashboard();
-          },
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  color: const Color(0xFFF4F7FD),
-                  child: profileImageUrl != null && profileImageUrl.isNotEmpty
-                      ? Image.network(
-                          profileImageUrl,
-                          width: 48,
-                          height: 48,
-                          fit: BoxFit.cover,
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return const Center(
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            );
-                          },
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Icon(
-                              Icons.person,
-                              color: ProfileScreen.primaryBlue,
-                              size: 28,
-                            );
-                          },
-                        )
-                      : const Icon(
-                          Icons.person,
-                          color: ProfileScreen.primaryBlue,
-                          size: 28,
-                        ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+        // ======================================================
+        // PROFILE
+        // ======================================================
+        Expanded(
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+
+                if (!mounted) return;
+
+                await refreshDashboard();
+              },
+              child: Row(
                 children: [
-                  const Text(
-                    'Good Morning,',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF888888)),
+                  // PROFILE IMAGE
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      color: const Color(0xFFF4F7FD),
+                      child:
+                          profileImageUrl != null && profileImageUrl.isNotEmpty
+                          ? Image.network(
+                              profileImageUrl,
+                              width: 48,
+                              height: 48,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.person,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  size: 28,
+                                );
+                              },
+                            )
+                          : Icon(
+                              Icons.person,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 28,
+                            ),
+                    ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    displayName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF201E1F),
+
+                  const SizedBox(width: 12),
+
+                  // NAME
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          context.tr('good_morning'),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+
+                        const SizedBox(height: 2),
+
+                        Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
-        _SquareButton(
-          icon: Icons.notifications_none,
-          showBadge: true,
-          onTap: () {},
+
+        const SizedBox(width: 12),
+
+        // ======================================================
+        // NOTIFICATION BELL
+        // ======================================================
+        _NotificationButton(
+          unreadCount: _unreadNotifications,
+          onTap: _openNotifications,
         ),
       ],
     );
   }
 }
 
+// ============================================================
+// BALANCE CARD
+// ============================================================
+
 class _BalanceCard extends StatelessWidget {
   const _BalanceCard({required this.summary});
 
   final BalanceSummary summary;
 
-  String _formatCurrency(double value) =>
-      NumberFormat.currency(symbol: '\$').format(value);
+  String _formatCurrency(double value) {
+    return NumberFormat.currency(symbol: '\$').format(value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -325,11 +498,13 @@ class _BalanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Total Balance',
-            style: TextStyle(color: Color(0xFF8FC5F3), fontSize: 13),
+          Text(
+            context.tr('total_balance'),
+            style: const TextStyle(color: Color(0xFF8FC5F3), fontSize: 13),
           ),
+
           const SizedBox(height: 3),
+
           Text(
             _formatCurrency(summary.totalBalance),
             style: const TextStyle(
@@ -339,24 +514,31 @@ class _BalanceCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+
           const SizedBox(height: 18),
+
           const Divider(color: Color(0x337FC0F5), height: 1),
+
           const SizedBox(height: 17),
+
           Row(
             children: [
               Expanded(
-                child: _BalanceSummary(
-                  label: 'Income',
+                child: _BalanceSummaryItem(
+                  label: context.tr('income'),
                   amount: _formatCurrency(summary.totalIncome),
                   icon: Icons.arrow_upward,
                   iconColor: const Color(0xFF11C89D),
                 ),
               ),
+
               Container(width: 1, height: 31, color: const Color(0x337FC0F5)),
+
               const SizedBox(width: 20),
+
               Expanded(
-                child: _BalanceSummary(
-                  label: 'Expenses',
+                child: _BalanceSummaryItem(
+                  label: context.tr('expenses'),
                   amount: _formatCurrency(summary.totalExpense),
                   icon: Icons.arrow_downward,
                   iconColor: const Color(0xFFFF4360),
@@ -370,8 +552,12 @@ class _BalanceCard extends StatelessWidget {
   }
 }
 
-class _BalanceSummary extends StatelessWidget {
-  const _BalanceSummary({
+// ============================================================
+// BALANCE SUMMARY ITEM
+// ============================================================
+
+class _BalanceSummaryItem extends StatelessWidget {
+  const _BalanceSummaryItem({
     required this.label,
     required this.amount,
     required this.icon,
@@ -380,6 +566,7 @@ class _BalanceSummary extends StatelessWidget {
 
   final String label;
   final String amount;
+
   final IconData icon;
   final Color iconColor;
 
@@ -396,116 +583,149 @@ class _BalanceSummary extends StatelessWidget {
           ),
           child: Icon(icon, color: iconColor, size: 17),
         ),
+
         const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(color: Color(0xFF9FCBF0), fontSize: 11),
-            ),
-            Text(
-              amount,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF8FC5F3),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
+
+              Text(
+                amount,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 }
 
+// ============================================================
+// TRANSACTION TILE
+// ============================================================
+
 class _TransactionTile extends StatelessWidget {
-  const _TransactionTile({required this.transaction});
+  const _TransactionTile({required this.transaction, required this.onTap});
 
   final TransactionItem transaction;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final color = CategoryVisuals.colorFromHex(transaction.displayColorHex);
+
+    final icon = CategoryVisuals.iconFor(transaction.displayIcon);
+
     final formattedAmount = NumberFormat.currency(
       symbol: '\$',
     ).format(transaction.amount.abs());
+
     final sign = transaction.isIncome ? '+' : '-';
+
     final displayDate = DateFormat(
       'MMM d, yyyy',
+      context.langCode,
     ).format(DateTime.parse(transaction.transactionDate));
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        children: [
-          Container(
-            width: 43,
-            height: 43,
-            decoration: BoxDecoration(
-              color: transaction.isIncome
-                  ? const Color(0xFFE4F4FC)
-                  : const Color(0xFFFFE5E8),
-              borderRadius: BorderRadius.circular(12),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final titleColor = isDark ? Colors.white : const Color(0xFF292929);
+
+    final subtitleColor = isDark
+        ? const Color(0xFFB0B0B0)
+        : const Color(0xFF777777);
+
+    final expenseAmountColor = isDark
+        ? Colors.redAccent
+        : const Color(0xFFFF4352);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: Icon(icon, color: Colors.white, size: 23),
             ),
-            child: Icon(
-              transaction.isIncome ? Icons.arrow_upward : Icons.arrow_downward,
-              color: const Color(0xFF0061B7),
-              size: 23,
-            ),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  transaction.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF333031),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+
+            const SizedBox(width: 13),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    transaction.displayTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: titleColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  displayDate,
-                  style: const TextStyle(
-                    color: Color(0xFF999999),
-                    fontSize: 11,
+
+                  const SizedBox(height: 2),
+
+                  Text(
+                    displayDate,
+                    style: TextStyle(color: subtitleColor, fontSize: 11),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '$sign$formattedAmount',
-            style: TextStyle(
-              color: transaction.isIncome
-                  ? const Color(0xFF0CBF91)
-                  : const Color(0xFFFF4352),
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+
+            const SizedBox(width: 8),
+
+            Text(
+              '$sign$formattedAmount',
+              style: TextStyle(
+                color: transaction.isIncome
+                    ? const Color(0xFF0CBF91)
+                    : expenseAmountColor,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _SquareButton extends StatelessWidget {
-  const _SquareButton({
-    required this.icon,
-    required this.onTap,
-    this.showBadge = false,
-  });
+// ============================================================
+// NOTIFICATION BUTTON
+// ============================================================
 
-  final IconData icon;
+class _NotificationButton extends StatelessWidget {
+  const _NotificationButton({required this.onTap, required this.unreadCount});
+
   final VoidCallback onTap;
-  final bool showBadge;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -516,22 +736,44 @@ class _SquareButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: SizedBox(
-          width: 42,
-          height: 42,
+          width: 46,
+          height: 46,
           child: Stack(
+            clipBehavior: Clip.none,
             alignment: Alignment.center,
             children: [
-              Icon(icon, color: const Color(0xFF0061B7), size: 22),
-              if (showBadge)
+              const Icon(
+                Icons.notifications_none_rounded,
+                color: Color(0xFF0061B7),
+                size: 23,
+              ),
+
+              // ==================================================
+              // UNREAD BADGE
+              // ==================================================
+              if (unreadCount > 0)
                 Positioned(
-                  right: 9,
-                  top: 8,
+                  right: 1,
+                  top: 1,
                   child: Container(
-                    width: 7,
-                    height: 7,
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    alignment: Alignment.center,
                     decoration: const BoxDecoration(
                       color: Color(0xFFFF4352),
                       shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      unreadCount > 99 ? '99+' : '$unreadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        height: 1,
+                      ),
                     ),
                   ),
                 ),

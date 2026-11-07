@@ -1,7 +1,7 @@
 class CategoryModel {
   final String id;
   final String name;
-  final String kind; // "EXPENSE" or "INCOME"
+  final String kind;
   final String icon;
   final String colorHex;
   final int transactionCount;
@@ -17,12 +17,13 @@ class CategoryModel {
 
   factory CategoryModel.fromJson(Map<String, dynamic> json) {
     return CategoryModel(
-      id: json['id'],
-      name: json['name'],
-      kind: json['kind'],
-      icon: json['icon'] ?? 'category',
-      colorHex: json['colorHex'] ?? '#929292',
-      transactionCount: json['transactionCount'] ?? 0,
+      id: json['id'].toString(),
+      name: (json['name'] ?? '').toString(),
+      kind: (json['kind'] ?? 'EXPENSE').toString(),
+      icon: (json['icon'] ?? 'category').toString(),
+      colorHex: (json['colorHex'] ?? '#929292').toString(),
+      transactionCount:
+          int.tryParse('${json['transactionCount'] ?? 0}') ?? 0,
     );
   }
 }

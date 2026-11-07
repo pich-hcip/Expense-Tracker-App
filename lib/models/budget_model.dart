@@ -1,39 +1,166 @@
 class BudgetModel {
   final String id;
+
   final String categoryId;
   final String categoryName;
-  final String categoryIcon;
-  final String categoryColorHex;
-  final double monthlyLimit;
-  final double spentSoFar;
-  final double remaining;
-  final double percentUsed;
 
-  BudgetModel({
+  final String? categoryIcon;
+  final String? categoryColorHex;
+
+  final double monthlyLimit;
+  final double spent;
+  final double remaining;
+  final double percentage;
+
+  final bool overBudget;
+
+  final DateTime periodMonth;
+
+  const BudgetModel({
     required this.id,
     required this.categoryId,
     required this.categoryName,
-    required this.categoryIcon,
-    required this.categoryColorHex,
+    this.categoryIcon,
+    this.categoryColorHex,
     required this.monthlyLimit,
-    required this.spentSoFar,
+    required this.spent,
     required this.remaining,
-    required this.percentUsed,
+    required this.percentage,
+    required this.overBudget,
+    required this.periodMonth,
   });
 
-  bool get isOverBudget => spentSoFar > monthlyLimit;
-
-  factory BudgetModel.fromJson(Map<String, dynamic> json) {
+  factory BudgetModel.fromJson(
+    Map<String, dynamic> json,
+  ) {
     return BudgetModel(
-      id: json['id'],
-      categoryId: json['categoryId'],
-      categoryName: json['categoryName'],
-      categoryIcon: json['categoryIcon'] ?? 'more',
-      categoryColorHex: json['categoryColorHex'] ?? '#929292',
-      monthlyLimit: double.parse(json['monthlyLimit'].toString()),
-      spentSoFar: double.parse(json['spentSoFar'].toString()),
-      remaining: double.parse(json['remaining'].toString()),
-      percentUsed: double.parse(json['percentUsed'].toString()),
+      id: json['id'].toString(),
+
+      categoryId:
+          json['categoryId'].toString(),
+
+      categoryName:
+          json['categoryName']?.toString() ??
+              'Category',
+
+      categoryIcon:
+          json['categoryIcon']?.toString(),
+
+      categoryColorHex:
+          json['categoryColorHex']?.toString(),
+
+      monthlyLimit:
+          _toDouble(
+        json['monthlyLimit'],
+      ),
+
+      spent:
+          _toDouble(
+        json['spent'],
+      ),
+
+      remaining:
+          _toDouble(
+        json['remaining'],
+      ),
+
+      percentage:
+          _toDouble(
+        json['percentage'],
+      ),
+
+      overBudget:
+          json['overBudget'] == true,
+
+      periodMonth:
+          DateTime.parse(
+        json['periodMonth'].toString(),
+      ),
     );
+  }
+
+  static double _toDouble(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return 0;
+    }
+
+    return double.tryParse(
+          value.toString(),
+        ) ??
+        0;
+  }
+}
+
+class BudgetSummaryModel {
+  final double totalBudget;
+  final double totalSpent;
+  final double remaining;
+  final double percentage;
+
+  final int activeBudgets;
+  final int overBudgetCount;
+
+  const BudgetSummaryModel({
+    required this.totalBudget,
+    required this.totalSpent,
+    required this.remaining,
+    required this.percentage,
+    required this.activeBudgets,
+    required this.overBudgetCount,
+  });
+
+  factory BudgetSummaryModel.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return BudgetSummaryModel(
+      totalBudget:
+          _toDouble(
+        json['totalBudget'],
+      ),
+
+      totalSpent:
+          _toDouble(
+        json['totalSpent'],
+      ),
+
+      remaining:
+          _toDouble(
+        json['remaining'],
+      ),
+
+      percentage:
+          _toDouble(
+        json['percentage'],
+      ),
+
+      activeBudgets:
+          int.tryParse(
+                json['activeBudgets']
+                    .toString(),
+              ) ??
+              0,
+
+      overBudgetCount:
+          int.tryParse(
+                json['overBudgetCount']
+                    .toString(),
+              ) ??
+              0,
+    );
+  }
+
+  static double _toDouble(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return 0;
+    }
+
+    return double.tryParse(
+          value.toString(),
+        ) ??
+        0;
   }
 }

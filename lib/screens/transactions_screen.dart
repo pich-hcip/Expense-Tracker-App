@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:expense_tracker_app/core/l10n.dart';
 import 'package:intl/intl.dart';
 import '../core/category_visuals.dart';
 import '../models/transaction_model.dart';
@@ -40,7 +41,7 @@ class TransactionsScreenState extends State<TransactionsScreen> {
       });
     } catch (e) {
       setState(() {
-        _error = 'Could not load transactions.';
+        _error = 'transactions_load_error';
         _isLoading = false;
       });
     }
@@ -50,7 +51,10 @@ class TransactionsScreenState extends State<TransactionsScreen> {
 
   Future<void> _openDetail(TransactionItem item) async {
     final deleted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(builder: (_) => TransactionDetailScreen(transaction: item)),
+      MaterialPageRoute<bool>(
+        builder: (_) =>
+            TransactionDetailScreen.fromTransaction(transaction: item),
+      ),
     );
     if (deleted == true) _loadTransactions();
   }
@@ -67,9 +71,9 @@ class TransactionsScreenState extends State<TransactionsScreen> {
     final target = DateTime(date.year, date.month, date.day);
     final diff = today.difference(target).inDays;
 
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
-    return DateFormat('MMMM d, yyyy').format(date);
+    if (diff == 0) return context.tr('today');
+    if (diff == 1) return context.tr('yesterday');
+    return DateFormat('MMMM d, yyyy', context.langCode).format(date);
   }
 
   Map<String, List<TransactionItem>> get _groupedTransactions {
@@ -92,9 +96,12 @@ class TransactionsScreenState extends State<TransactionsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!),
+            Text(context.tr(_error!)),
             const SizedBox(height: 12),
-            ElevatedButton(onPressed: _loadTransactions, child: const Text('Retry')),
+            ElevatedButton(
+              onPressed: _loadTransactions,
+              child: Text(context.tr('retry')),
+            ),
           ],
         ),
       );
@@ -108,15 +115,22 @@ class TransactionsScreenState extends State<TransactionsScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
           child: Row(
-            children: const [
+            children: [
               Text(
-                'Transactions',
-                style: TextStyle(color: Color(0xFF1D1D1F), fontSize: 20, fontWeight: FontWeight.w700),
+                context.tr('transactions'),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
         ),
-        _FilterBar(selected: _filter, onSelected: (value) => setState(() => _filter = value)),
+        _FilterBar(
+          selected: _filter,
+          onSelected: (value) => setState(() => _filter = value),
+        ),
         const Divider(height: 1, color: Color(0xFFEFEFEF)),
         Expanded(
           child: grouped.isEmpty
@@ -124,10 +138,13 @@ class TransactionsScreenState extends State<TransactionsScreen> {
                   onRefresh: _loadTransactions,
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    children: const [
-                      SizedBox(height: 100),
+                    children: [
+                      const SizedBox(height: 100),
                       Center(
-                        child: Text('No transactions yet', style: TextStyle(color: Colors.black45)),
+                        child: Text(
+                          context.tr('no_transactions'),
+                          style: const TextStyle(color: Colors.black45),
+                        ),
                       ),
                     ],
                   ),
@@ -167,7 +184,11 @@ class _FilterBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           for (final label in const ['All', 'Income', 'Expense'])
-            _FilterButton(label: label, selected: selected == label, onTap: () => onSelected(label)),
+            _FilterButton(
+              label: label,
+              selected: selected == label,
+              onTap: () => onSelected(label),
+            ),
         ],
       ),
     );
@@ -175,7 +196,11 @@ class _FilterBar extends StatelessWidget {
 }
 
 class _FilterButton extends StatelessWidget {
-  const _FilterButton({required this.label, required this.selected, required this.onTap});
+  const _FilterButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final bool selected;
@@ -190,12 +215,17 @@ class _FilterButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(22),
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: selected ? 27 : 20, vertical: 10),
+          padding: EdgeInsets.symmetric(
+            horizontal: selected ? 27 : 20,
+            vertical: 10,
+          ),
           child: Text(
-            label,
+            context.tr(label.toLowerCase()),
             style: TextStyle(
-              color: selected ? Colors.white : const Color(0xFF5F5F5F),
-              fontSize: 13,
+              color: selected
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.onSurface,
+              fontSize: 12,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             ),
           ),
@@ -206,7 +236,11 @@ class _FilterButton extends StatelessWidget {
 }
 
 class _TransactionGroup extends StatelessWidget {
-  const _TransactionGroup({required this.label, required this.items, required this.onTapItem});
+  const _TransactionGroup({
+    required this.label,
+    required this.items,
+    required this.onTapItem,
+  });
 
   final String label;
   final List<TransactionItem> items;
@@ -214,14 +248,24 @@ class _TransactionGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 17, 24, 7),
-          child: Text(label, style: const TextStyle(color: Color(0xFF4D4D4D), fontSize: 13, fontWeight: FontWeight.w600)),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isDark ? Colors.white : const Color(0xFF4D4D4D),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
-        for (final item in items) _TransactionRow(item: item, onTap: () => onTapItem(item)),
+        for (final item in items)
+          _TransactionRow(item: item, onTap: () => onTapItem(item)),
       ],
     );
   }
@@ -235,19 +279,34 @@ class _TransactionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = CategoryVisuals.colorFromHex(item.categoryColorHex);
-    final icon = CategoryVisuals.iconFor(item.categoryIcon);
+    final color = CategoryVisuals.colorFromHex(item.displayColorHex);
+    final icon = CategoryVisuals.iconFor(item.displayIcon);
     final sign = item.isIncome ? '+' : '-';
-    final formattedAmount = NumberFormat.currency(symbol: '\$').format(item.amount.abs());
-    final displayDate = DateFormat('MMMM d, yyyy').format(DateTime.parse(item.transactionDate));
+    final formattedAmount = NumberFormat.currency(
+      symbol: '\$',
+    ).format(item.amount.abs());
+    final displayDate = DateFormat(
+      'MMM d, yyyy',
+      context.langCode,
+    ).format(DateTime.parse(item.transactionDate));
 
-    return Material(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? Colors.white : const Color(0xFF292929);
+    final subtitleColor = isDark
+        ? const Color(0xFFB0B0B0)
+        : const Color(0xFF777777);
+    final expenseAmountColor = isDark
+        ? Colors.redAccent
+        : const Color(0xFFD32F2F);
+
+    return Container(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 7),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
                 width: 42,
@@ -261,28 +320,30 @@ class _TransactionRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.title.isEmpty ? item.categoryName : item.title,
-                      style: const TextStyle(color: Color(0xFF292929), fontSize: 13, fontWeight: FontWeight.w600),
+                      item.displayTitle,
+                      style: TextStyle(
+                        color: titleColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 2),
-                    Text(item.categoryName, style: const TextStyle(color: Color(0xFF777777), fontSize: 11)),
+                    Text(
+                      displayDate,
+                      style: TextStyle(color: subtitleColor, fontSize: 11),
+                    ),
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '$sign$formattedAmount',
-                    style: TextStyle(
-                      color: item.isIncome ? const Color(0xFF16B98B) : const Color(0xFF242424),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(displayDate, style: const TextStyle(color: Color(0xFF777777), fontSize: 9)),
-                ],
+              Text(
+                '$sign$formattedAmount',
+                style: TextStyle(
+                  color: item.isIncome
+                      ? const Color(0xFF16B98B)
+                      : expenseAmountColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),

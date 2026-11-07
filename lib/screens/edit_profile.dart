@@ -1,7 +1,11 @@
 import 'dart:io';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:expense_tracker_app/core/l10n.dart';
 import 'package:image_picker/image_picker.dart';
-import '../models/user_profile_model.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../services/image_upload_service.dart';
 import '../services/user_service.dart';
 
@@ -24,12 +28,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   bool _isLoading = true;
   bool _isSaving = false;
-  bool _isUploadingPhoto = false;
   String? _error;
   String? _avatarUrl;
 
-  static const _primaryBlue = Color(0xFF2458C6);
-  static const _textColor = Color(0xFF17213D);
+  // New photo picked but NOT uploaded yet (uploads only when Save is tapped)
+  XFile? _pickedPhoto;
 
   @override
   void initState() {
@@ -45,69 +48,82 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     try {
       final profile = await _userService.getProfile();
+      if (!mounted) return;
       setState(() {
         _nameController.text = profile.fullName;
         _emailController.text = profile.email;
+        _phoneController.text = profile.phoneNumber ?? '';
         _avatarUrl = profile.avatarUrl;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _error = 'Could not load profile.';
+        _error = 'profile_load_error';
         _isLoading = false;
       });
     }
   }
 
+  // Only pick and preview the photo, do not upload
   Future<void> _changePhoto() async {
     final pickedFile = await _picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 800,
-      imageQuality: 85,
+      maxWidth: 400,
+      imageQuality: 80,
     );
 
-    if (pickedFile == null) return;
+    if (pickedFile == null || !mounted) return;
 
-    setState(() => _isUploadingPhoto = true);
-
-    try {
-      final url = await _uploadService.uploadImage(pickedFile);
-      await _userService.updateAvatar(url);
-      setState(() {
-        _avatarUrl = url;
-        _isUploadingPhoto = false;
-      });
-    } catch (e) {
-      setState(() => _isUploadingPhoto = false);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not upload photo. Try again.')),
-      );
-    }
+    setState(() => _pickedPhoto = pickedFile);
   }
 
   void _save() async {
+    if (_isSaving) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() => _isSaving = true);
 
     try {
-      await _userService.updateProfile(
+      // 1. Upload the new photo only now (if the user picked one)
+      if (_pickedPhoto != null) {
+        final objectKey = await _uploadService.uploadImage(_pickedPhoto!);
+        await _userService.updateAvatar(objectKey);
+      }
+
+      // 2. Save name and phone
+      final savedProfile = await _userService.updateProfile(
         fullName: _nameController.text.trim(),
         email: _emailController.text.trim(),
-        phoneNumber: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+        phoneNumber: _phoneController.text.trim().isEmpty
+            ? null
+            : _phoneController.text.trim().replaceAll(RegExp(r'[\s()-]'), ''),
       );
 
+      // 3. Photo changed: get the new https link so other screens update
+      if (_pickedPhoto != null) {
+        final profile = await _userService.getProfile();
+        if (mounted && profile.avatarUrl != null) {
+          context.read<AuthProvider>().updateProfileImage(profile.avatarUrl!);
+        }
+      }
+
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated')),
-      );
-      Navigator.pop(context, true); // tell AccountPage to refresh
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.tr('profile_updated'))));
+      Navigator.pop(context, savedProfile);
     } catch (e) {
-      setState(() => _isSaving = false);
       if (!mounted) return;
+      setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save changes. Try again.')),
+        SnackBar(
+          content: Text(
+            e is StateError
+                ? e.message.toString()
+                : context.tr('confirm_changes_failed'),
+          ),
+        ),
       );
     }
   }
@@ -122,27 +138,76 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     if (_error != null) {
       return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_error!),
+              Text(
+                context.tr(_error!),
+                style: TextStyle(color: theme.colorScheme.onSurface),
+              ),
               const SizedBox(height: 12),
-              ElevatedButton(onPressed: _loadProfile, child: const Text('Retry')),
+              ElevatedButton(
+                onPressed: _loadProfile,
+                child: Text(context.tr('retry')),
+              ),
             ],
           ),
         ),
       );
     }
 
+    final primaryColor = theme.colorScheme.primary;
+
+    final personIcon = Icon(
+      Icons.person,
+      size: 48,
+      color: isDark
+          ? theme.colorScheme.onSurfaceVariant
+          : const Color(0xFFB6C0D9),
+    );
+
+    // Only load real web links
+    final hasAvatar =
+        _avatarUrl != null && _avatarUrl!.startsWith('http');
+
+    // Preview: new picked photo first, then saved photo, then icon
+    Widget avatarImage;
+    if (_pickedPhoto != null) {
+      avatarImage = Image.file(
+        File(_pickedPhoto!.path),
+        fit: BoxFit.cover,
+      );
+    } else if (hasAvatar) {
+      avatarImage = CachedNetworkImage(
+        imageUrl: _avatarUrl!,
+        // Same file = same cache, even when the S3 link changes
+        cacheKey: Uri.parse(_avatarUrl!).path,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => const Center(
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        errorWidget: (_, __, ___) => personIcon,
+      );
+    } else {
+      avatarImage = personIcon;
+    }
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -150,6 +215,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
             children: [
               Expanded(
                 child: ListView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
                   children: [
                     _EditHeader(onBack: () => Navigator.maybePop(context)),
@@ -163,29 +230,32 @@ class _EditProfilePageState extends State<EditProfilePage> {
                             height: 96,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFFE7ECF7), width: 3),
+                              border: Border.all(
+                                color: isDark
+                                    ? theme.colorScheme.outlineVariant
+                                    : const Color(0xFFE7ECF7),
+                                width: 3,
+                              ),
                             ),
-                            child: ClipOval(
-                              child: _isUploadingPhoto
-                                  ? const Center(child: CircularProgressIndicator())
-                                  : _avatarUrl != null
-                                      ? Image.network(_avatarUrl!, fit: BoxFit.cover)
-                                      : const Icon(Icons.person, size: 48, color: Color(0xFFB6C0D9)),
-                            ),
+                            child: ClipOval(child: avatarImage),
                           ),
                           Positioned(
                             right: -2,
                             bottom: 2,
                             child: Material(
-                              color: _primaryBlue,
+                              color: primaryColor,
                               shape: const CircleBorder(),
                               child: InkWell(
-                                onTap: _isUploadingPhoto ? null : _changePhoto,
+                                onTap: _isSaving ? null : _changePhoto,
                                 customBorder: const CircleBorder(),
                                 child: const SizedBox(
                                   width: 31,
                                   height: 31,
-                                  child: Icon(Icons.camera_alt_outlined, color: Colors.white, size: 16),
+                                  child: Icon(
+                                    Icons.camera_alt_outlined,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
                                 ),
                               ),
                             ),
@@ -193,36 +263,57 @@ class _EditProfilePageState extends State<EditProfilePage> {
                         ],
                       ),
                     ),
+                    
                     const SizedBox(height: 29),
                     _ProfileField(
-                      label: 'Full Name',
+                      label: context.tr('full_name'),
                       controller: _nameController,
+                      readOnly: _isSaving,
                       icon: Icons.person_outline,
                       textInputAction: TextInputAction.next,
                       validator: (value) =>
-                          value == null || value.trim().isEmpty ? 'Enter your full name' : null,
+                          value == null || value.trim().isEmpty
+                          ? context.tr('full_name_required')
+                          : null,
                     ),
                     const SizedBox(height: 17),
                     _ProfileField(
-                      label: 'Email Address',
-                      controller: _emailController,
-                      icon: Icons.mail_outline_rounded,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
+                      label: context.tr('phone_optional'),
+                      controller: _phoneController,
+                      icon: Icons.phone_outlined,
+                      readOnly: _isSaving,
+                      keyboardType: TextInputType.phone,
+                      textInputAction: TextInputAction.done,
                       validator: (value) {
-                        final email = value?.trim() ?? '';
-                        if (email.isEmpty) return 'Enter your email address';
-                        if (!email.contains('@')) return 'Enter a valid email address';
+                        final phone = (value ?? '').trim();
+                        if (phone.isEmpty) return null;
+                        final normalized = phone.replaceAll(
+                          RegExp(r'[\s()-]'),
+                          '',
+                        );
+                        if (!RegExp(r'^\+?[0-9]{7,15}$').hasMatch(normalized)) {
+                          return context.tr('phone_invalid');
+                        }
                         return null;
                       },
                     ),
                     const SizedBox(height: 17),
                     _ProfileField(
-                      label: 'Phone Number',
-                      controller: _phoneController,
-                      icon: Icons.phone_outlined,
-                      keyboardType: TextInputType.phone,
-                      textInputAction: TextInputAction.done,
+                      label: context.tr('email_address'),
+                      controller: _emailController,
+                      icon: Icons.mail_outline_rounded,
+                      readOnly: true,
+                      fillColor: isDark
+                          ? theme.colorScheme.surfaceContainerHighest
+                                .withOpacity(0.5)
+                          : const Color(0xFFF1F5F9),
+                      suffixIcon: Icon(
+                        Icons.lock_outline_rounded,
+                        color: isDark
+                            ? theme.colorScheme.outline
+                            : const Color(0xFF94A3B8),
+                        size: 18,
+                      ),
                     ),
                   ],
                 ),
@@ -236,16 +327,28 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     onPressed: _isSaving ? null : _save,
                     style: ElevatedButton.styleFrom(
                       elevation: 0,
-                      backgroundColor: _primaryBlue,
+                      backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     child: _isSaving
                         ? const SizedBox(
-                            width: 20, height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
-                        : const Text('Save Changes', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                        : Text(
+                            context.tr('save_changes'),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                   ),
                 ),
               ),
@@ -264,25 +367,38 @@ class _EditHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Row(
       children: [
         Material(
-          color: const Color(0xFFF4F7FD),
+          color: isDark
+              ? theme.colorScheme.surfaceContainerHigh
+              : const Color(0xFFF4F7FD),
           borderRadius: BorderRadius.circular(11),
           child: InkWell(
             onTap: onBack,
             borderRadius: BorderRadius.circular(11),
-            child: const SizedBox(
+            child: SizedBox(
               width: 37,
               height: 37,
-              child: Icon(Icons.arrow_back_ios_new, size: 19, color: _EditProfilePageState._primaryBlue),
+              child: Icon(
+                Icons.arrow_back_ios_new,
+                size: 19,
+                color: theme.colorScheme.primary,
+              ),
             ),
           ),
         ),
         const SizedBox(width: 9),
-        const Text(
-          'Edit Profile',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: _EditProfilePageState._textColor),
+        Text(
+          context.tr('edit_profile'),
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.onSurface,
+          ),
         ),
       ],
     );
@@ -299,6 +415,8 @@ class _ProfileField extends StatelessWidget {
     this.validator,
     this.readOnly = false,
     this.onTap,
+    this.fillColor,
+    this.suffixIcon,
   });
 
   final String label;
@@ -309,42 +427,92 @@ class _ProfileField extends StatelessWidget {
   final String? Function(String?)? validator;
   final bool readOnly;
   final VoidCallback? onTap;
+  final Color? fillColor;
+  final Widget? suffixIcon;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final defaultFillColor = isDark
+        ? theme.colorScheme.surfaceContainer
+        : const Color(0xFFFAFBFD);
+
+    final defaultBorderColor = isDark
+        ? theme.colorScheme.outlineVariant
+        : const Color(0xFFE1E6EF);
+
+    final readOnlyBorderColor = isDark
+        ? theme.colorScheme.outlineVariant.withOpacity(0.5)
+        : const Color(0xFFCBD5E1);
+
+    final labelColor = isDark
+        ? theme.colorScheme.onSurfaceVariant
+        : const Color(0xFF4F5870);
+
+    final textColor = readOnly
+        ? (isDark
+              ? theme.colorScheme.onSurface.withOpacity(0.6)
+              : const Color(0xFF64748B))
+        : theme.colorScheme.onSurface;
+
+    final iconColor = readOnly
+        ? (isDark ? theme.colorScheme.outline : const Color(0xFF94A3B8))
+        : theme.colorScheme.primary;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Color(0xFF4F5870), fontSize: 12, fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: TextStyle(
+            color: labelColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 7),
         TextFormField(
+          scrollPadding: const EdgeInsets.only(bottom: 32),
           controller: controller,
           keyboardType: keyboardType,
           textInputAction: textInputAction,
           validator: validator,
           readOnly: readOnly,
           onTap: onTap,
-          style: const TextStyle(color: Color(0xFF17213D), fontSize: 14),
+          style: TextStyle(color: textColor, fontSize: 14),
           decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: const Color(0xFF2458C6), size: 20),
+            prefixIcon: Icon(icon, color: iconColor, size: 20),
+            suffixIcon: suffixIcon,
             filled: true,
-            fillColor: const Color(0xFFFAFBFD),
+            fillColor: fillColor ?? defaultFillColor,
             contentPadding: const EdgeInsets.symmetric(vertical: 15),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(11),
-              borderSide: const BorderSide(color: Color(0xFFE1E6EF)),
+              borderSide: BorderSide(
+                color: readOnly ? readOnlyBorderColor : defaultBorderColor,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(11),
-              borderSide: const BorderSide(color: Color(0xFF2458C6), width: 1.4),
+              borderSide: BorderSide(
+                color: readOnly
+                    ? readOnlyBorderColor
+                    : theme.colorScheme.primary,
+                width: readOnly ? 1.0 : 1.4,
+              ),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(11),
-              borderSide: const BorderSide(color: Color(0xFFFF4D4D)),
+              borderSide: BorderSide(color: theme.colorScheme.error),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(11),
-              borderSide: const BorderSide(color: Color(0xFFFF4D4D), width: 1.4),
+              borderSide: BorderSide(
+                color: theme.colorScheme.error,
+                width: 1.4,
+              ),
             ),
           ),
         ),

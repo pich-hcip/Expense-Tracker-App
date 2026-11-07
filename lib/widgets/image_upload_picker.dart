@@ -6,7 +6,8 @@ import '../services/image_upload_service.dart';
 class ImageUploadPicker extends StatefulWidget {
   const ImageUploadPicker({super.key, required this.onUploaded});
 
-  /// Called with the S3 URL once upload succeeds.
+  /// Called with the S3 file name (e.g. profile-images/abc.jpg) once upload succeeds.
+  /// Save this name with the API; do not show it with Image.network.
   final ValueChanged<String> onUploaded;
 
   @override

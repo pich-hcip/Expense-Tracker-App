@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../../core/l10n.dart';
 import '../../providers/auth_provider.dart';
 import 'login_screen.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key});
+  final String email;
+  final String otp;
+
+  const ResetPasswordScreen({
+    super.key,
+    required this.email,
+    required this.otp,
+  });
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -12,19 +21,25 @@ class ResetPasswordScreen extends StatefulWidget {
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _newPasswordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
 
-  bool _hideNewPassword = true;
-  bool _hideConfirmPassword = true;
+  final TextEditingController _newPasswordController = TextEditingController();
 
-  void _handleReset() async {
-    if (!_formKey.currentState!.validate()) return;
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
 
-    final authProvider = context.read<AuthProvider>();
-    final success = await authProvider.resetPassword(
-      _emailController.text.trim(),
+  bool _obscureNewPassword = true;
+  bool _obscureConfirmPassword = true;
+
+  Future<void> _handleResetPassword() async {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    final auth = context.read<AuthProvider>();
+
+    final success = await auth.resetPassword(
+      widget.email,
+      widget.otp,
       _newPasswordController.text,
     );
 
@@ -32,16 +47,20 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password reset! Please log in.')),
+        SnackBar(
+          content: Text(context.tr('reset_success')),
+          backgroundColor: Colors.green,
+        ),
       );
+
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
         (route) => false,
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(authProvider.errorMessage ?? 'Reset failed'),
+          content: Text(auth.errorMessage ?? context.tr('reset_failed')),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -49,125 +68,211 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   }
 
   @override
-  void dispose() {
-    _emailController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
+    final auth = context.watch<AuthProvider>();
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Colors.black87,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Form(
             key: _formKey,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 24),
-                const Text('Reset Password',
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                const Text(
-                  'Enter your email and choose a new password.',
-                  style: TextStyle(fontSize: 15, color: Colors.black54),
+                const SizedBox(height: 20),
+
+                Center(
+                  child: Container(
+                    width: 110,
+                    height: 110,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.lock_reset_rounded,
+                      size: 58,
+                      color: Colors.blue,
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 32),
+
+                const SizedBox(height: 30),
+
+                Text(
+                  context.tr('create_new_password'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 27,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                Text(
+                  context.tr('enter_new_password_below'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, color: Colors.black54),
+                ),
+
+                const SizedBox(height: 45),
+
+                Text(
+                  context.tr('new_password'),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+
+                const SizedBox(height: 8),
 
                 TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
+                  scrollPadding: const EdgeInsets.only(bottom: 32),
+                  controller: _newPasswordController,
+                  obscureText: _obscureNewPassword,
+                  textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    hintText: 'Email address',
-                    prefixIcon: const Icon(Icons.email_outlined),
+                    hintText: context.tr('enter_new_password'),
+                    prefixIcon: const Icon(Icons.lock_outline_rounded),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureNewPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscureNewPassword = !_obscureNewPassword;
+                        });
+                      },
+                    ),
                     filled: true,
-                    fillColor: Colors.grey.shade200,
+                    fillColor: Colors.grey.shade100,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30),
+                      borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: Colors.blue,
+                        width: 1.5,
+                      ),
                     ),
                   ),
                   validator: (value) {
-                    final email = value?.trim() ?? '';
-                    if (email.isEmpty) return 'Please enter your email';
-                    if (!email.contains('@')) return 'Please enter a valid email';
+                    if (value == null || value.isEmpty) {
+                      return context.tr('new_password_required');
+                    }
+
+                    if (value.length < 6) {
+                      return context.tr('password_min');
+                    }
+
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
 
-                TextFormField(
-                  controller: _newPasswordController,
-                  obscureText: _hideNewPassword,
-                  decoration: InputDecoration(
-                    hintText: 'New password',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      onPressed: () =>
-                          setState(() => _hideNewPassword = !_hideNewPassword),
-                      icon: Icon(_hideNewPassword
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey.shade200,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                  validator: (value) => (value?.length ?? 0) < 6
-                      ? 'Password must be at least 6 characters'
-                      : null,
+                const SizedBox(height: 22),
+
+                Text(
+                  context.tr('confirm_new_password'),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 16),
+
+                const SizedBox(height: 8),
 
                 TextFormField(
+                  scrollPadding: const EdgeInsets.only(bottom: 32),
                   controller: _confirmPasswordController,
-                  obscureText: _hideConfirmPassword,
+                  obscureText: _obscureConfirmPassword,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) {
+                    if (!auth.isLoading) {
+                      _handleResetPassword();
+                    }
+                  },
                   decoration: InputDecoration(
-                    hintText: 'Confirm new password',
-                    prefixIcon: const Icon(Icons.lock_outline),
+                    hintText: context.tr('confirm_new_password_hint'),
+                    prefixIcon: const Icon(Icons.lock_outline_rounded),
                     suffixIcon: IconButton(
-                      onPressed: () => setState(
-                        () => _hideConfirmPassword = !_hideConfirmPassword,
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
                       ),
-                      icon: Icon(_hideConfirmPassword
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined),
+                      onPressed: () {
+                        setState(() {
+                          _obscureConfirmPassword = !_obscureConfirmPassword;
+                        });
+                      },
                     ),
                     filled: true,
-                    fillColor: Colors.grey.shade200,
+                    fillColor: Colors.grey.shade100,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30),
+                      borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide.none,
                     ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: Colors.blue,
+                        width: 1.5,
+                      ),
+                    ),
                   ),
-                  validator: (value) => value != _newPasswordController.text
-                      ? 'Passwords do not match'
-                      : null,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return context.tr('confirm_password_required');
+                    }
+
+                    if (value != _newPasswordController.text) {
+                      return context.tr('password_not_match');
+                    }
+
+                    return null;
+                  },
                 ),
-                const SizedBox(height: 32),
+
+                const SizedBox(height: 40),
 
                 SizedBox(
                   width: double.infinity,
-                  height: 55,
+                  height: 56,
                   child: ElevatedButton(
-                    onPressed: authProvider.isLoading ? null : _handleReset,
+                    onPressed: auth.isLoading ? null : _handleResetPassword,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30),
                       ),
                     ),
-                    child: authProvider.isLoading
+                    child: auth.isLoading
                         ? const SizedBox(
                             width: 22,
                             height: 22,
@@ -176,17 +281,29 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                               strokeWidth: 2.5,
                             ),
                           )
-                        : const Text(
-                            'Reset Password',
-                            style: TextStyle(fontSize: 18, color: Colors.white),
+                        : Text(
+                            context.tr('reset_password'),
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                   ),
                 ),
+
+                const SizedBox(height: 30),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
   }
 }

@@ -8,21 +8,22 @@ class AuthService {
     required String fullName,
     required String email,
     required String password,
-    String? phoneNumber,
   }) async {
     try {
-      final response = await ApiClient.dio.post('/auth/register', data: {
-        'fullName': fullName,
-        'email': email,
-        'password': password,
-        'phoneNumber': phoneNumber,
-      });
+      final response = await ApiClient.dio.post(
+        '/auth/register',
+        data: {
+          'fullName': fullName,
+          'email': email,
+          'password': password,
+        },
+      );
 
       final auth = AuthResponse.fromJson(response.data);
       await SecureStorage.saveToken(auth.token);
       return auth;
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw Exception(_handleError(e));
     }
   }
 
@@ -31,16 +32,19 @@ class AuthService {
     required String password,
   }) async {
     try {
-      final response = await ApiClient.dio.post('/auth/login', data: {
-        'email': email,
-        'password': password,
-      });
+      final response = await ApiClient.dio.post(
+        '/auth/login',
+        data: {
+          'email': email,
+          'password': password,
+        },
+      );
 
       final auth = AuthResponse.fromJson(response.data);
       await SecureStorage.saveToken(auth.token);
       return auth;
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw Exception(_handleError(e));
     }
   }
 
@@ -50,20 +54,26 @@ class AuthService {
 
   Future<String> resetPassword(String email, String newPassword) async {
     try {
-      final response = await ApiClient.dio.post('/auth/reset-password', data: {
-        'email': email,
-        'newPassword': newPassword,
-      });
-      return response.data['message'];
+      final response = await ApiClient.dio.post(
+        '/auth/reset-password',
+        data: {
+          'email': email,
+          'newPassword': newPassword,
+        },
+      );
+      return response.data['message'] ?? 'Password reset successfully.';
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw Exception(_handleError(e));
     }
   }
 
   String _handleError(DioException e) {
-    if (e.response?.data != null && e.response?.data['message'] != null) {
-      return e.response!.data['message'];
+    if (e.response?.data != null && e.response?.data is Map) {
+      final data = e.response!.data as Map<String, dynamic>;
+      if (data.containsKey('message') && data['message'] != null) {
+        return data['message'].toString();
+      }
     }
-    return 'Something went wrong. Please try again.';
+    return 'Something went wrong (${e.response?.statusCode ?? "Network Error"}). Please try again.';
   }
 }

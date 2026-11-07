@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:expense_tracker_app/core/l10n.dart';
 import '../../core/category_visuals.dart';
 import '../../models/category_model.dart';
 import '../../services/category_service.dart';
-
 
 class AddCategoryScreen extends StatefulWidget {
   const AddCategoryScreen({super.key, this.defaultIsExpense = true});
@@ -25,7 +25,7 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
   static const List<String> _iconKeys = [
     'restaurant',
     'shopping_bag',
-    'shopping_bag',
+    'local_mall',
     'health',
     'gift',
     'more',
@@ -71,15 +71,16 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
     super.dispose();
   }
 
-  void _save() async {
+  Future<void> _save() async {
+    if (_isSaving) return;
+
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a category name.')),
-      );
+      _showError(context.tr('enter_category_name'));
       return;
     }
 
+    FocusScope.of(context).unfocus();
     setState(() => _isSaving = true);
 
     try {
@@ -91,39 +92,69 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
       );
 
       if (!mounted) return;
-      Navigator.of(context).pop(true); // true = tell CategoryScreen to refresh
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save category. Try again.')),
-      );
+      _showError(_categoryService.getErrorMessage(e));
     }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final primaryColor = isDark
+        ? theme.colorScheme.primary
+        : const Color(0xFF0061B7);
+    final backgroundColor = theme.scaffoldBackgroundColor;
+    final dividerColor = isDark ? theme.dividerColor : const Color(0xFFF0F0F0);
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: backgroundColor,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         leadingWidth: 68,
         leading: Padding(
           padding: const EdgeInsets.only(left: 20),
-          child: _HeaderButton(icon: Icons.arrow_back, onTap: () => Navigator.of(context).pop(false)),
+          child: _HeaderButton(
+            icon: Icons.arrow_back,
+            onTap: () => Navigator.of(context).pop(false),
+          ),
         ),
         titleSpacing: 4,
-        title: const Text(
-          'Add Categories',
-          style: TextStyle(color: Color(0xFF171717), fontSize: 20, fontWeight: FontWeight.w700),
+        title: Text(
+          context.tr('add_category'),
+          style: TextStyle(
+            color: theme.textTheme.titleLarge?.color ??
+                (isDark ? Colors.white : const Color(0xFF171717)),
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         actions: [
           _isSaving
               ? const Padding(
                   padding: EdgeInsets.all(10),
-                  child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 )
               : _HeaderButton(icon: Icons.check, onTap: _save),
           const SizedBox(width: 22),
@@ -132,6 +163,7 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.only(bottom: 30),
           child: Column(
             children: [
@@ -139,54 +171,85 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
               Container(
                 width: 68,
                 height: 68,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0061B7),
+                decoration: BoxDecoration(
+                  color: primaryColor,
                   shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: Color(0x28000000), blurRadius: 4, offset: Offset(0, 2))],
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x28000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
                 ),
-                child: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 28),
+                child: const Icon(
+                  Icons.camera_alt_outlined,
+                  color: Colors.white,
+                  size: 28,
+                ),
               ),
               const SizedBox(height: 16),
-              const Divider(height: 1, thickness: 1, color: Color(0xFFF0F0F0)),
+              Divider(height: 1, thickness: 1, color: dividerColor),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _FieldLabel('Category Name'),
+                    _FieldLabel(context.tr('category_name')),
                     const SizedBox(height: 6),
                     TextField(
+                      scrollPadding: const EdgeInsets.only(bottom: 32),
                       controller: _nameController,
                       textInputAction: TextInputAction.done,
+                      style: TextStyle(color: theme.textTheme.bodyLarge?.color),
                       decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 13,
+                        ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(11),
-                          borderSide: const BorderSide(color: Color(0xFFCAD3DF)),
+                          borderSide: BorderSide(
+                            color: isDark
+                                ? theme.colorScheme.outline
+                                : const Color(0xFFCAD3DF),
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(11),
-                          borderSide: const BorderSide(color: Color(0xFF0061B7), width: 1.5),
+                          borderSide: BorderSide(
+                            color: primaryColor,
+                            width: 1.5,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 23),
-                    const _FieldLabel('Type'),
+                    _FieldLabel(context.tr('type')),
                     const SizedBox(height: 5),
                     Row(
                       children: [
-                        _TypeChoice(label: 'Expense', selected: _isExpense, onTap: () => setState(() => _isExpense = true)),
+                        _TypeChoice(
+                          label: context.tr('expense'),
+                          selected: _isExpense,
+                          onTap: () => setState(() => _isExpense = true),
+                        ),
                         const SizedBox(width: 24),
-                        _TypeChoice(label: 'Income', selected: !_isExpense, onTap: () => setState(() => _isExpense = false)),
+                        _TypeChoice(
+                          label: context.tr('income'),
+                          selected: !_isExpense,
+                          onTap: () => setState(() => _isExpense = false),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 22),
-                    const _FieldLabel('Icon'),
+                    _FieldLabel(context.tr('icon')),
                     const SizedBox(height: 11),
                     Wrap(
                       spacing: 10,
                       runSpacing: 14,
                       children: List.generate(_icons.length, (index) {
+                        final isSelected = _selectedIcon == index;
                         return GestureDetector(
                           onTap: () => setState(() => _selectedIcon = index),
                           child: Container(
@@ -195,15 +258,24 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
                             decoration: BoxDecoration(
                               color: _iconColors[index],
                               shape: BoxShape.circle,
-                              border: _selectedIcon == index ? Border.all(color: Colors.black, width: 2) : null,
+                              border: isSelected
+                                  ? Border.all(
+                                      color: theme.colorScheme.onSurface,
+                                      width: 2,
+                                    )
+                                  : null,
                             ),
-                            child: Icon(_icons[index], color: Colors.white, size: 22),
+                            child: Icon(
+                              _icons[index],
+                              color: Colors.white,
+                              size: 22,
+                            ),
                           ),
                         );
                       }),
                     ),
                     const SizedBox(height: 16),
-                    const _FieldLabel('Color'),
+                    _FieldLabel(context.tr('color')),
                     const SizedBox(height: 11),
                     Wrap(
                       spacing: 14,
@@ -218,10 +290,15 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
                             padding: const EdgeInsets.all(3),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: selected ? Border.all(color: _colors[index], width: 2) : null,
+                              border: selected
+                                  ? Border.all(color: _colors[index], width: 2)
+                                  : null,
                             ),
                             child: DecoratedBox(
-                              decoration: BoxDecoration(color: _colors[index], shape: BoxShape.circle),
+                              decoration: BoxDecoration(
+                                color: _colors[index],
+                                shape: BoxShape.circle,
+                              ),
                             ),
                           ),
                         );
@@ -246,13 +323,27 @@ class _HeaderButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final buttonBg = isDark
+        ? theme.colorScheme.surfaceContainerHighest
+        : const Color(0xFFF4F8FC);
+    final iconColor = isDark
+        ? theme.colorScheme.primary
+        : const Color(0xFF0061B7);
+
     return Material(
-      color: const Color(0xFFF4F8FC),
+      color: buttonBg,
       shape: const CircleBorder(),
       child: InkWell(
         onTap: onTap,
         customBorder: const CircleBorder(),
-        child: SizedBox(width: 38, height: 38, child: Icon(icon, color: const Color(0xFF0061B7), size: 23)),
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: Icon(icon, color: iconColor, size: 23),
+        ),
       ),
     );
   }
@@ -265,12 +356,30 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: const TextStyle(color: Color(0xFF65778D), fontSize: 13, fontWeight: FontWeight.w600));
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final labelColor = isDark
+        ? theme.colorScheme.onSurfaceVariant
+        : const Color(0xFF65778D);
+
+    return Text(
+      text,
+      style: TextStyle(
+        color: labelColor,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+      ),
+    );
   }
 }
 
 class _TypeChoice extends StatelessWidget {
-  const _TypeChoice({required this.label, required this.selected, required this.onTap});
+  const _TypeChoice({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final bool selected;
@@ -278,6 +387,23 @@ class _TypeChoice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final activeColor = isDark
+        ? theme.colorScheme.primary
+        : const Color(0xFF0061B7);
+    final inactiveBorder = isDark
+        ? theme.colorScheme.outline
+        : const Color(0xFF7A8BA0);
+
+    final selectedTextColor = isDark
+        ? theme.colorScheme.onSurface
+        : const Color(0xFF27364A);
+    final unselectedTextColor = isDark
+        ? theme.colorScheme.onSurfaceVariant
+        : const Color(0xFF65778D);
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -292,17 +418,25 @@ class _TypeChoice extends StatelessWidget {
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: selected ? const Color(0xFF0061B7) : const Color(0xFF7A8BA0), width: 2),
+                border: Border.all(
+                  color: selected ? activeColor : inactiveBorder,
+                  width: 2,
+                ),
               ),
               child: selected
-                  ? const DecoratedBox(decoration: BoxDecoration(color: Color(0xFF0061B7), shape: BoxShape.circle))
+                  ? DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: activeColor,
+                        shape: BoxShape.circle,
+                      ),
+                    )
                   : null,
             ),
             const SizedBox(width: 7),
             Text(
               label,
               style: TextStyle(
-                color: selected ? const Color(0xFF27364A) : const Color(0xFF65778D),
+                color: selected ? selectedTextColor : unselectedTextColor,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
